@@ -1,0 +1,442 @@
+#
+###			Hive Assignment			####
+#
+
+###################################################################
+#
+# 					Uploading file in S3.
+#
+# S3 Bucket: data-science-10
+# Folder in the data-science-10 bucket: /tripdata/yellowtaxitripdata
+#
+# Steps to upload file:
+# 1. Open master node using putty. User master node name and private key
+# Use df command to identify a folder Uploading file under mnt1
+# cd /mnt1
+#
+# downloading file on mnt1
+# sudo wget https://s3.amazonaws.com/nyc-tlc/trip+data/yellow_tripdata_2017-11.csv
+# sudo wget https://s3.amazonaws.com/nyc-tlc/trip+data/yellow_tripdata_2017-12.csv
+#
+# Upload file to S3 bucket
+# asw s3 cp yellow_tripdata_2017-11.csv s3://data-science-10/tripdata/yellowtaxitripdata
+# asw s3 cp yellow_tripdata_2017-12.csv s3://data-science-10/tripdata/yellowtaxitripdata
+#
+# Running the above statements on putty would result in uploading of both files in the s3 bucket
+#
+####################################################################
+#
+# Creating External Table - Tripdata table from trip data in S3 bucket
+# Both the csv files are placed in the same folder.
+# executing the below query loads both the tables
+# skip.header.line.count="2" is used to ignore the header and the blank rows in the csv file
+#
+####################################################################
+
+create external table if not exists tripdata(
+`VendorID` int, 
+`tpep_pickup_datetime` TIMESTAMP, 
+`tpep_dropoff_datetime` TIMESTAMP, 
+`passenger_count` int, 
+`trip_distance` double,
+ `RatecodeID` int, 
+ `store_and_fwd_flag` string, 
+ `PULocationID` int, 
+ `DOLocationID` int, 
+ `payment_type` int, 
+ `fare_amount` double, 
+ `extra` double, 
+ `mta_tax` double,
+ `tip_amount` double, 
+ `tolls_amount` int, 
+ `improvement_surcharge` double, 
+ `total_amount` double
+)
+ROW FORMAT DELIMITED FIELDS TERMINATED BY ','
+LOCATION 's3://data-science-10/tripdata/yellowtaxitripdata'
+tblproperties ("skip.header.line.count"="2");
+
+####################################################################
+#
+# Creating ORC DATA for faster processing from tripdata table
+# 
+####################################################################
+
+CREATE EXTERNAL TABLE IF NOT EXISTS tripdata_orc(
+`VendorID` int, 
+`tpep_pickup_datetime` TIMESTAMP, 
+`tpep_dropoff_datetime` TIMESTAMP, 
+`passenger_count` int, 
+`trip_distance` double,
+ `RatecodeID` int, 
+ `store_and_fwd_flag` string, 
+ `PULocationID` int, 
+ `DOLocationID` int, 
+ `payment_type` int, 
+ `fare_amount` double, 
+ `extra` double, 
+ `mta_tax` double,
+ `tip_amount` double, 
+ `tolls_amount` int, 
+ `improvement_surcharge` double, 
+ `total_amount` double
+)
+STORED AS ORC tblproperties ("orc.compress"="ZLIB");
+
+INSERT OVERWRITE TABLE tripdata_orc SELECT * FROM tripdata;
+
+####################################################################
+#
+# Creating Partition Table by year and month from tripdata external table
+# A combination of month and year is used for partitioning
+#
+####################################################################
+
+# To load the partitions dynamically
+
+SET hive.exec.dynamic.partition.mode = nonstrict;
+SET hive.exec.dynamic.partition = true;
+
+create external table if not exists tripdata_partitioned_year_month
+(`VendorID` int, 
+`tpep_pickup_datetime` TIMESTAMP, 
+`tpep_dropoff_datetime` TIMESTAMP, 
+`passenger_count` int, 
+`trip_distance` double,
+ `RatecodeID` int, 
+ `store_and_fwd_flag` string, 
+ `PULocationID` int, 
+ `DOLocationID` int, 
+ `payment_type` int, 
+ `fare_amount` double, 
+ `extra` double, 
+ `mta_tax` double,
+ `tip_amount` double, 
+ `tolls_amount` int, 
+ `improvement_surcharge` double, 
+ `total_amount` double) partitioned by (monthYr string)
+location 's3://data-science-10/tripdata/yellowtaxitripdata_partition_year_month/';
+
+insert overwrite table tripdata_partitioned_year_month partition(monthyr)
+select VendorID, tpep_pickup_datetime,tpep_dropoff_datetime, passenger_count, 
+trip_distance, RatecodeID,store_and_fwd_flag, PULocationID, DOLocationID, payment_type, 
+fare_amount, extra, mta_tax, tip_amount, tolls_amount, improvement_surcharge,total_amount,
+concat(month(tpep_pickup_datetime),"-",year(tpep_pickup_datetime)) as monthyr
+from tripdata;
+
+####################################################################
+#
+# Creating ORC table on Partitioned data Table to improve query performance
+#
+####################################################################
+create external table if not exists tripdata_partition_orc
+(`VendorID` int, 
+`tpep_pickup_datetime` TIMESTAMP, 
+`tpep_dropoff_datetime` TIMESTAMP, 
+`passenger_count` int, 
+`trip_distance` double,
+ `RatecodeID` int, 
+ `store_and_fwd_flag` string, 
+ `PULocationID` int, 
+ `DOLocationID` int, 
+ `payment_type` int, 
+ `fare_amount` double, 
+ `extra` double, 
+ `mta_tax` double,
+ `tip_amount` double, 
+ `tolls_amount` int, 
+ `improvement_surcharge` double, 
+ `total_amount` double) partitioned by (monthYr string)
+stored as orc location 's3://data-science-10/tripdata/yellowtaxitripdata_partition_year_month_orc/'
+tblproperties ("orc.compress"="SNAPPY");
+
+insert overwrite table tripdata_partition_orc partition(monthYr)
+select * from tripdata_partitioned_year_month;
+
+
+########################################
+###Basic queries to check data santity
+########################################
+select * from tripdata_partition_orc limit 10;
+
+select * from tripdata_partition_orc where monthyr = '11-2017';
+
+select count(vendorid)from tripdata_orc;
+
+########################################
+
+####################################################
+##Basic Data Quality Checks
+####################################################
+
+#########
+##1. How many records has each TPEP provider provided? Write a query that summarises the number of records of each provider.
+#########
+# using the tripdata ORC table to find the vendor for faster execution
+# grouping done on vendorid
+# Vendor	Count
+#	1		8447149
+#	2		10345930
+
+select vendorid as Vendor, count(vendorid)as VendorTrips from tripdata_orc group by vendorid;
+
+#########
+##2. The data provided is for months November and December only. Check whether the data is consistent, and if not, identify the data quality issues. Mention all data quality issues in comments.
+#########
+
+# 1. Blank first row in both the csv files
+# 2. There are data which belong to dates other than November and December using the below query
+# 
+# 	monthyr	vendorid	count
+#	1-2001		2		1
+#	1-2003		2		4
+#	1-2009		2		46
+#	1-2018		2		30
+#	10-2017		2		208
+#	11-2041		2		1
+#	12-2008		2		21
+#	2-2018		2		2
+#	3-2018		2		2
+#
+# 3. The records for 10-2017 are trips which started on 31st Oct 2017 and ended on 1st Nov 2017
+#
+#	pickupdate		count
+#		31			208
+
+SELECT monthyr,vendorid, count(monthyr) as count
+FROM tripdata_partitioned_year_month where monthyr NOT IN('11-2017','12-2017')
+GROUP BY monthyr,vendorid;
+
+SELECT day(tpep_pickup_datetime) as pickupDate,count(day(tpep_pickup_datetime)) as count
+FROM tripdata_partitioned_year_month where monthyr IN('10-2017')
+GROUP BY day(tpep_pickup_datetime);
+
+#########  
+##3. You might have encountered unusual or erroneous rows in the dataset. Can you conclude which vendor is doing a bad job in providing the records?
+#########
+# 1. All the errorous records with respect to data beyond Nov and Dec are from vendorid 2
+# 2. There is 1 record from vendor 2 where passenger_count is 192
+# 3. There are 108750 trips from vendor 1 where pessenger_count is 0 and total fare of such trips is 1373393.36
+# 4. Similarly vendor 2 has 220 such trips where pessenger_count is 0. Total fare for such trips is 11912.84
+# 5. There are 178 records where ratecodeid=99. 172 from vendor 1 and 8 from vendor 2
+# 6. There are 9372 trips with negative fare amount. All these record from vendor 2.
+# 7. There are 4835 trips with negative extra. Vendor 2 - 4826 trips; Vendor 1 - 9 trips
+# 8. There are 9092 trips where mta_tax is negative. All these record from vendor 2.
+# 9. There are 9367 trips where Improvement_surcharge is negative. All these record from vendor 2.
+# 10. There are 97 trips where tip_amount is negative. All these record from vendor 2.
+# 11. There are 41 trips where tolls_amount is negative. All these record from vendor 2.
+# 12. There are 9372 trips where total_amount is negative. All these record from vendor 2.
+#
+# Vendor 2 is doing a bad job overall in providing the records
+#
+
+SELECT vendorid FROM tripdata_orc where passenger_count=192;
+ 
+select passenger_count, count(*) as TripCount from tripdata_orc
+group by passenger_count order by TripCount desc;
+
+SELECT vendorid, count(passenger_count), sum(fare_amount) FROM tripdata_orc
+where passenger_count=0 GROUP BY vendorid;
+ 
+SELECT ratecodeid, count(*) FROM tripdata_orc GROUP BY ratecodeid;
+SELECT vendorid, count(*) FROM tripdata_orc where ratecodeid=99 GROUP BY vendorid ;
+
+SELECT count(fare_amount) FROM tripdata_orc where fare_amount <0;
+SELECT vendorid, count(fare_amount) FROM tripdata_orc where fare_amount <0 GROUP BY vendorid;
+
+SELECT count(extra) FROM tripdata_orc where extra <0;
+SELECT vendorid, count(extra) FROM tripdata_orc where extra <0 GROUP BY vendorid;
+
+SELECT count(mta_tax) FROM tripdata_orc where mta_tax <0;
+SELECT vendorid, count(*) FROM tripdata_orc where mta_tax < 0 GROUP BY vendorid;
+
+SELECT count(Improvement_surcharge) FROM tripdata_orc where Improvement_surcharge <0;
+SELECT vendorid, count(*) FROM tripdata_orc where Improvement_surcharge < 0 GROUP BY vendorid;
+
+SELECT count(tip_amount) FROM tripdata_orc where tip_amount <0;
+SELECT vendorid, count(*) FROM tripdata_orc where tip_amount < 0 GROUP BY vendorid;
+
+####################################################
+#				Analysis-I
+####################################################
+
+####################
+#1. Compare the average fare for November and December.
+####################
+#
+# pickupmonth	averagefare
+#	11-2017		13.15
+#	12-2017		12.95
+
+select monthyr as pickupMonth, round(avg(fare_amount),2) as AverageFare 
+from tripdata_partition_orc where monthyr IN('11-2017','12-2017') and fare_amount>0
+group by monthyr;
+
+####################
+#2. Explore the ‘number of passengers per trip’ - how many trips are made by each level of ‘Passenger_count’? Do most people travel solo or with other people?
+####################
+
+# ExplorMost of the passengers travel Solo followed by Passenger count with 2, 5 and 3
+# there are data issues as well
+# Passenger Count 0 - 108970 records ; 1 record having passenger count - 192
+# 	passenger_count		trips
+#	1					13251047
+#	2					2816117
+#	5					875823
+#	3					810767
+#	6					531002
+#	4					398846
+#	0					108970
+#	7					75
+#	8					60		
+#	9					56
+#	192					1
+
+SELECT passenger_count, count(*) as Trips FROM tripdata_orc
+GROUP BY passenger_count ORDER BY Trips desc;
+
+# Most of the Travellers travel Solo
+#  	solotravellers	grouptravel
+#	13251047		5432747
+
+SELECT
+count(case WHEN passenger_count=1 THEN 1 END) as SoloTravellers,
+count(case WHEN passenger_count>1 THEN 1 END) as GroupTravel
+from (select passenger_count from tripdata_partition_orc where monthyr in ('11-2017','12-2017'))
+as passengerData;
+
+####################
+#3. Which is the most preferred mode of payment?
+####################
+
+# Payment type 1 is the most preferred mode of payment
+# 	payment_type	tripcount
+#			1		12638517
+3			2		6026188
+#			3		100530
+#			4		27529
+
+SELECT payment_type, count(payment_type)as TripCount FROM tripdata_partition_orc 
+where monthyr in ('11-2017','12-2017')
+GROUP BY payment_type ORDER BY TripCount desc;
+
+####################
+#4. What is the average tip paid? Compare the average tip with the 25th, 50th and 75th percentiles and comment whether the ‘average tip’ is a representative statistic (of the central tendency) of ‘tip amount paid’.
+####################
+
+# Average Tip paid: 1.85
+
+SELECT round(avg(tip_amount),2) As AvgTipAmount FROM tripdata_partition_orc WHERE tip_amount >=0
+and monthyr in ('11-2017','12-2017');
+
+
+#	[0,0.25,0.5,0.75,1]
+# 	percentile:	[0.0,0.0,1.0,2.0,496.0]
+# 	Average tip is not a representative statistic of the central tendency of the tip_amount. It is closer to 75th percentile
+
+SELECT percentile(cast(tip_amount as BIGINT),array(0,0.25,0.50,0.75,1)) As Percentile 
+FROM tripdata_partition_orc where tip_amount>=0 and monthyr in ('11-2017','12-2017');
+
+####################
+#5. Explore the ‘Extra’ (charge) variable - what is the fraction of total trips where an extra charge is levied?
+####################
+
+SELECT extra, count(*) from tripdata_partition_orc  where extra>=0 and  monthyr in ('11-2017','12-2017')
+GROUP BY extra ORDER BY extra desc;
+
+# Extra is charged in 46% of the trips
+#  	noextra		extra
+#		0.54	0.46
+
+SELECT
+round(count(case WHEN extra=0 THEN 1 END)/count(extra),2) as NoExtra,
+round(count(case WHEN extra>0 THEN 1 END)/count(extra),2) as Extra
+from (select extra from tripdata_partition_orc  where monthyr in ('11-2017','12-2017')) as extraData;
+
+####################################################
+#				Analysis-II
+####################################################
+
+####################
+#1. What is the correlation between the number of passengers and tip paid? Do multiple travellers pay more compared to solo travellers?
+####################
+
+# Coorelation between passenger_count and tip_amount: -0.004
+
+select round(corr(passenger_count,tip_amount),3) as coorelation
+from tripdata_partition_orc where passenger_count>0 and tip_amount>=0 and fare_amount>0
+and monthyr in ('11-2017','12-2017');
+
+# Average Tip for Passenger count until passenger count of 5 is roughly similar to passenger count=1. 
+# There is a good increase in the Tip for passenger count 7,8 and 9.
+
+#passenger_count	averagetip
+#	1					1.86
+#	2					1.86
+#	3					1.77
+#	4					1.63
+#	5					1.87
+#	6					1.86
+#	7					3.63
+#	8					8.55
+#	9					6.26
+#	192					1.24
+#
+
+select passenger_count, round(avg(tip_amount),2) as AverageTip
+from tripdata_partition_orc where passenger_count>0 and tip_amount>=0
+and monthyr in ('11-2017','12-2017')
+group by passenger_count order by passenger_count;
+
+####################
+#2. Create five buckets of ‘tip paid’: [0, 5), [5-10), [10-15) , [15-20) and >=20. Calculate the percentage share of each bucket (i.e. the fraction of trips falling in each bucket).
+####################
+
+#
+#	zero2five	five2ten	ten2fifteen	fifteen2twenty	morethan20
+#		92.14		5.63		1.88			0.24	0.1
+#
+SELECT
+round(count(case WHEN tip_amount>=0 AND tip_amount<5 THEN 1 END)*100/count(tip_amount),2) as zero2five,
+round(count(case WHEN tip_amount>=5 AND tip_amount<10 THEN 1 END)*100/count(tip_amount),2) as five2ten,
+round(count(case WHEN tip_amount>=10 AND tip_amount<15 THEN 1 END)*100/count(tip_amount),2) as ten2fifteen,
+round(count(case WHEN tip_amount>=15 AND tip_amount<20 THEN 1 END)*100/count(tip_amount),2) as fifteen2twenty,
+round(count(case WHEN tip_amount>=20 THEN 1 END)*100/count(tip_amount),2) as morethan20
+from (select tip_amount from tripdata_partition_orc  where monthyr in ('11-2017','12-2017') and tip_amount>=0) 
+as tipData;
+
+####################
+#3. Which month has a greater average ‘speed’ - November or December? Note that the variable ‘speed’ will have to be derived from other metrics.
+####################
+
+# Nov-17: 12.83 miles/hour
+# Dec-17: 12.77 miles/hour
+
+# Nov has a greater average Speed
+
+SELECT round(avg(trip_distance*60*60/(unix_timestamp(tpep_dropoff_datetime) - unix_timestamp(tpep_pickup_datetime))),2) as AvgNovSpeed 
+from tripdata_partition_orc where monthyr = '11-2017' and trip_distance>0;
+
+SELECT round(avg(trip_distance*60*60/(unix_timestamp(tpep_dropoff_datetime) - unix_timestamp(tpep_pickup_datetime))),2) as AvgDecSpeed 
+from tripdata_partition_orc where monthyr = '12-2017' and trip_distance>0;
+
+
+####################
+#4. Analyse the average speed of the most happening days of the year i.e. 31st December (New year’s eve) and 25th December (Christmas Eve) and compare it with the overall average. 
+####################
+
+# Average Speed: 12.8 miles/hr
+# Speed on 25th Dec: 16.86 miles/hr
+# Speed on 31st Dec: 14.12 miles/hr
+# Average speed is higher on most happening days (25th and 31st Dec)
+
+SELECT round(avg(trip_distance*60*60/(unix_timestamp(tpep_dropoff_datetime) - unix_timestamp(tpep_pickup_datetime))),2) as AvgSpeed 
+from tripdata_partition_orc where trip_distance>0;	
+
+SELECT round(avg(trip_distance*60*60/(unix_timestamp(tpep_dropoff_datetime) - unix_timestamp(tpep_pickup_datetime))),2) as AvgSpeedon25Dec
+from tripdata_partition_orc where trip_distance>0 and month(tpep_pickup_datetime)=12 
+and day(tpep_pickup_datetime)=25;
+
+SELECT round(avg(trip_distance*60*60/(unix_timestamp(tpep_dropoff_datetime) - unix_timestamp(tpep_pickup_datetime))),2) as AvgSpeedon31Dec 
+from tripdata_partition_orc where trip_distance>0 and month(tpep_pickup_datetime)=12 
+and day(tpep_pickup_datetime)=31;

@@ -1,0 +1,293 @@
+library(lubridate)
+setwd("C:/Capstone-Nikhil")
+rawdata <- read.csv("ConsumerElectronics.csv")
+productlist <- read.csv("ProductList.csv")
+investments <- read.csv("Investment.csv")
+nps_Score <- read.csv("NPS.csv")
+# renaming the column names for readability:
+colnames(rawdata) <- c("FSN_ID","Order_Date","Year","Month","Order_ID","Order_Item_ID","GMV","Units","DeliverybDays",
+"DeliverycDays","Payment_Type","SLA","Cust_ID","Pincode","Product_Super_Category","Product_Category",
+"Product_Sub_Category","Product_Vertical","Product_MRP","Product_Procurement_SLA")
+# Check for NA values
+# Following columns have NA values
+#   GMV       Cust_ID     Pincode
+#   4904       4904        4904
+sapply(rawdata, function(x) sum(is.na(x)))
+#removing the rows with NA values since they are very few and would not impact the overall results
+rawdata <- na.omit(rawdata)
+head(rawdata)
+str(rawdata)
+summary(rawdata)
+# Since the data to be used is from July 2015 to June 2016, removing the orders which is earlier than July 2015 and
+# orders placed after June 2016
+rawdata <- subset(rawdata,(Year==2015 & Month>=7) | (Year==2016 & Month<=6))
+#Creating a new Date Column for order date
+rawdata$Date <- date(rawdata$Order_Date)
+#finding the week of the year in which the Order was placed
+rawdata$order_week <- week(rawdata$Date)
+levels(as.factor(rawdata$order_week))
+week(date("2016-06-30"))
+week(date("2015-07-01"))
+rawdata$order_week <- ifelse(rawdata$Year==2016 & rawdata$order_week<=26,rawdata$order_week+53,rawdata$order_week)
+#There are 1349 items where GMV is 0.
+#Since GMV is total revenue, such products may be considered as free products
+length(which(rawdata$GMV==0))
+rawdata$gmv_cal <-ifelse(rawdata$GMV<=rawdata$Product_MRP*rawdata$Units,"Equal or Less","more than gmv")
+length(which(rawdata$gmv_cal=="more than gmv"))
+length(which(rawdata$gmv_cal=="Equal or Less"))
+#Considering only those records where GMV is equal or less than the product of units and MRP
+rawdata <- subset(rawdata, gmv_cal=="Equal or Less")
+#Creating new columns - List Price & Discount Offered based on the above calculation
+rawdata$List_Price <- rawdata$GMV/rawdata$Units
+rawdata$Discount_Percent <- round((rawdata$Product_MRP-rawdata$List_Price)*100/rawdata$Product_MRP,0)
+# Merging data from different files
+orders<- merge(rawdata,nps_Score, by.x=c("Year","Month"))
+orders <- merge(orders,productlist, by.x = c("Product_Vertical"), by.y = c("Product"))
+orders <- merge(rawdata,investments, by.x=c("Year","Month"))
+summary(orders)
+library(lubridate)
+rawdata <- read.csv("ConsumerElectronics.csv")
+productlist <- read.csv("ProductList.csv")
+investments <- read.csv("Investment.csv")
+nps_Score <- read.csv("NPS.csv")
+# renaming the column names for readability:
+colnames(rawdata) <- c("FSN_ID","Order_Date","Year","Month","Order_ID","Order_Item_ID","GMV","Units","DeliverybDays",
+"DeliverycDays","Payment_Type","SLA","Cust_ID","Pincode","Product_Super_Category","Product_Category",
+"Product_Sub_Category","Product_Vertical","Product_MRP","Product_Procurement_SLA")
+# Check for NA values
+# Following columns have NA values
+#   GMV       Cust_ID     Pincode
+#   4904       4904        4904
+sapply(rawdata, function(x) sum(is.na(x)))
+#removing the rows with NA values since they are very few and would not impact the overall results
+rawdata <- na.omit(rawdata)
+head(rawdata)
+str(rawdata)
+summary(rawdata)
+# Since the data to be used is from July 2015 to June 2016, removing the orders which is earlier than July 2015 and
+# orders placed after June 2016
+rawdata <- subset(rawdata,(Year==2015 & Month>=7) | (Year==2016 & Month<=6))
+#Creating a new Date Column for order date
+rawdata$Date <- date(rawdata$Order_Date)
+#finding the week of the year in which the Order was placed
+rawdata$order_week <- week(rawdata$Date)
+levels(as.factor(rawdata$order_week))
+week(date("2016-06-30"))
+week(date("2015-07-01"))
+rawdata$order_week <- ifelse(rawdata$Year==2016 & rawdata$order_week<=26,rawdata$order_week+53,rawdata$order_week)
+#There are 1349 items where GMV is 0.
+#Since GMV is total revenue, such products may be considered as free products
+length(which(rawdata$GMV==0))
+rawdata$gmv_cal <-ifelse(rawdata$GMV<=rawdata$Product_MRP*rawdata$Units,"Equal or Less","more than gmv")
+length(which(rawdata$gmv_cal=="more than gmv"))
+length(which(rawdata$gmv_cal=="Equal or Less"))
+#Considering only those records where GMV is equal or less than the product of units and MRP
+rawdata <- subset(rawdata, gmv_cal=="Equal or Less")
+#Creating new columns - List Price & Discount Offered based on the above calculation
+rawdata$List_Price <- rawdata$GMV/rawdata$Units
+rawdata$Discount_Percent <- round((rawdata$Product_MRP-rawdata$List_Price)*100/rawdata$Product_MRP,0)
+# Merging data from different files
+orders<- merge(rawdata,nps_Score, by.x=c("Year","Month"))
+orders <- merge(orders,productlist, by.x = c("Product_Vertical"), by.y = c("Product"))
+View(orders)
+orders <- merge(orders,investments, by.x=c("Year","Month"))
+summary(orders)
+CameraAccessory_df <- subset(orders, Product_Sub_Category=="CameraAccessory")
+HomeAudio_df <- subset(orders, Product_Sub_Category=="HomeAudio")
+GamingAccessory_df <- subset(orders, Product_Sub_Category=="GamingAccessory")
+quantile(orders$Product_MRP, seq(0,1,.01))
+GamingAccessory_df <- subset(orders, Product_Sub_Category=="GamingAccessory")
+cluster <- aggregate(cbind(CameraAccessory_df$Units,CameraAccessory_df$List_Price,CameraAccessory_df$Product_MRP)~CameraAccessory_df$Product_Vertical,CameraAccessory_df,mean)
+View(cluster)
+cluster <- aggregate(cbind(Units,List_Price,Product_MRP)~Product_Vertical,CameraAccessory_df,mean)
+View(CameraAccessory_df)
+summary(orders)
+orders$Other[which(is.na(orders$Other))]<-0
+summary(orders)
+orders$Radio[which(is.na(orders$Radio))]<-0
+rawdata$DeliverybDays[which(rawdata$DeliverybDays=="\\N")]<-0
+rawdata$DeliverycDays[which(rawdata$DeliverycDays=="\\N")]<-0
+#replacing \\N from DeliverybDays and DeliverycDays with 0
+rawdata$DeliverybDays[which(rawdata$DeliverybDays=="\\N")]<-0
+rawdata$DeliverycDays[which(rawdata$DeliverycDays=="\\N")]<-0
+#Removing NA values from Radio and other investments with 0
+investments$Other[which(is.na(investments$Other))]<-0
+investments$Radio[which(is.na(investments$Radio))]<-0
+# Merging data from different files
+orders<- merge(rawdata,nps_Score, by.x=c("Year","Month"))
+orders <- merge(orders,productlist, by.x = c("Product_Vertical"), by.y = c("Product"))
+orders <- merge(orders,investments, by.x=c("Year","Month"))
+summary(orders)
+CameraAccessory_df <- subset(orders, Product_Sub_Category=="CameraAccessory")
+HomeAudio_df <- subset(orders, Product_Sub_Category=="HomeAudio")
+GamingAccessory_df <- subset(orders, Product_Sub_Category=="GamingAccessory")
+mean(cluster$Product_MRP)
+quantile(CameraAccessory_df$Product_MRP,0,1,.01)
+quantile(CameraAccessory_df$Product_MRP,seq(0,1,.01))
+View(CameraAccessory_df)
+View(investments)
+View(CameraAccessory_df)
+holiday_list<-c("2015-07-18","2015-07-19","2015-08-15","2015-08-16","2015-08-17","2015-08-28","2015-08-29","2015-08-30","2015-10-15",
+"2015-10-16","2015-10-17","2015-11-07","2015-11-08","2015-11-09","2015-11-10","2015-10-11","2015-10-12","2015-11-13",
+"2015-11-14","2015-12-25","2015-12-26","2015-12-27","2015-12-28","2015-12-29","2015-12-30","2016-01-01","2016-01-02",
+"2016-01-03","2016-01-20","2016-01-21","2016-01-22","2016-02-01","2016-02-02","2016-02-20","2016-02-21","2016-02-14",
+"2016-02-15","2016-03-07","2016-03-08","2016-03-09","2016-05-25","2016-05-26","2016-05-27")
+holiday_week <- week(holiday_list)
+holiday_list<- as.Date(holiday_list)
+holiday_week <- week(holiday_list)
+holiday_year <- year(holiday_list)
+holiday_df <- data.frame(holiday_week,holiday_year,holiday_list)
+View(holiday_df)
+holiday_week <- ifelse(holiday_week==2016 & holiday_week<=26,holiday_week+53,holiday_week)
+holiday_df <- data.frame(holiday_week,holiday_year,holiday_list)
+View(holiday_df)
+holiday_week <- ifelse(holiday_year==2016 & holiday_week<=26,holiday_week+53,holiday_week)
+holiday_df <- data.frame(holiday_week,holiday_year,holiday_list)
+View(holiday_df)
+holiday_list<-c("2015-07-18","2015-07-19","2015-08-15",
+"2015-08-16","2015-08-17","2015-08-28",
+"2015-08-29","2015-08-30","2015-10-15",
+"2015-10-16","2015-10-17","2015-11-07","2015-11-08","2015-11-09","2015-11-10",
+"2015-10-11","2015-10-12","2015-11-13","2015-11-14","2015-12-25","2015-12-26",
+"2015-12-27","2015-12-28","2015-12-29","2015-12-30","2016-01-01","2016-01-02",
+"2016-01-03","2016-01-20","2016-01-21","2016-01-22","2016-02-01","2016-02-02",
+"2016-02-20","2016-02-21","2016-02-14","2016-02-15","2016-03-07","2016-03-08",
+"2016-03-09","2016-05-25","2016-05-26","2016-05-27")
+holiday_list <- as.Date(holiday_list)
+week_year <- week(holiday_list)
+year <- year(holiday_list)
+holiday_list<-c("2015-07-18","2015-07-19","2015-08-15","2015-08-16","2015-08-17","2015-08-28","2015-08-29","2015-08-30","2015-10-15",
+"2015-10-16","2015-10-17","2015-11-07","2015-11-08","2015-11-09","2015-11-10","2015-10-11","2015-10-12","2015-11-13",
+"2015-11-14","2015-12-25","2015-12-26","2015-12-27","2015-12-28","2015-12-29","2015-12-30","2016-01-01","2016-01-02",
+"2016-01-03","2016-01-20","2016-01-21","2016-01-22","2016-02-01","2016-02-02","2016-02-20","2016-02-21","2016-02-14",
+"2016-02-15","2016-03-07","2016-03-08","2016-03-09","2016-05-25","2016-05-26","2016-05-27")
+holiday_list<- as.Date(holiday_list)
+holiday_list<-c("2015-07-18","2015-07-19","2015-08-15","2015-08-16","2015-08-17","2015-08-28","2015-08-29","2015-08-30","2015-10-15",
+"2015-10-16","2015-10-17","2015-11-07","2015-11-08","2015-11-09","2015-11-10","2015-10-11","2015-10-12","2015-11-13",
+"2015-11-14","2015-12-25","2015-12-26","2015-12-27","2015-12-28","2015-12-29","2015-12-30","2016-01-01","2016-01-02",
+"2016-01-03","2016-01-20","2016-01-21","2016-01-22","2016-02-01","2016-02-02","2016-02-20","2016-02-21","2016-02-14",
+"2016-02-15","2016-03-07","2016-03-08","2016-03-09","2016-05-25","2016-05-26","2016-05-27")
+holiday_list<- as.Date(holiday_list)
+holiday_week <- week(holiday_list)
+holiday_year <- year(holiday_list)
+holiday_week
+holiday_week <- ifelse(holiday_year==2016 & holiday_week<=26,holiday_week+53,holiday_week)
+holiday_week
+holiday_df <- data.frame(holiday_week,holiday_year,holiday_list)
+holiday_list<-c("2015-07-18","2015-07-19","2015-08-15",
+"2015-08-16","2015-08-17","2015-08-28",
+"2015-08-29","2015-08-30","2015-10-15",
+"2015-10-16","2015-10-17","2015-11-07","2015-11-08","2015-11-09","2015-11-10",
+"2015-10-11","2015-10-12","2015-11-13","2015-11-14","2015-12-25","2015-12-26",
+"2015-12-27","2015-12-28","2015-12-29","2015-12-30","2016-01-01","2016-01-02",
+"2016-01-03","2016-01-20","2016-01-21","2016-01-22","2016-02-01","2016-02-02",
+"2016-02-20","2016-02-21","2016-02-14","2016-02-15","2016-03-07","2016-03-08",
+"2016-03-09","2016-05-25","2016-05-26","2016-05-27")
+holiday_list <- as.Date(holiday_list)
+week_year <- week(holiday_list)
+year <- year(holiday_list)
+holiday <- data.frame(week_year,year)
+holiday$week_year<- ifelse(holiday$week_year<=26 & holiday$year==2016,holiday$week_year+53,holiday$week_year)
+View(holiday)
+week(date("2016-06-30"))
+week(date("2015-07-01"))
+levels(as.factor(rawdata$order_week))
+#Creating a new Date Column for order date
+rawdata$Date <- date(rawdata$Order_Date)
+#finding the week of the year in which the Order was placed
+rawdata$order_week <- week(rawdata$Date)
+levels(as.factor(rawdata$order_week))
+View(rawdata)
+week(date("2015-12-31"))
+rawdata$order_week <- ifelse(rawdata$Year==2016 & rawdata$order_week<=26,rawdata$order_week+53,rawdata$order_week)
+week("2015-12-30")
+week(date("2015-12-30"))
+week(date("2015-12-31"))
+week(date("2015-12-30"))
+week(date("2015-12-31"))
+day(date("2015-12-31"))
+holiday_df <- data.frame(holiday_week,holiday_year,holiday_freq)
+holiday_df$holiday_freq<-1
+holiday_list<- as.Date(holiday_list)
+holiday_week <- week(holiday_list)
+holiday_year <- year(holiday_list)
+holiday_week <- ifelse(holiday_year==2016 & holiday_week<=26,holiday_week+53,holiday_week)
+holiday_df <- data.frame(holiday_week,holiday_year)
+holiday_df$holiday_freq<-1
+month <- month(holiday_list)
+holiday_year <- year(holiday_list)
+Year <- year(holiday_list)
+holiday_list<- as.Date(holiday_list)
+Month <- month(holiday_list)
+Year <- year(holiday_list)
+holiday_df <- data.frame(Month,Year)
+holiday_df$holiday_freq<-1
+orders <- merge(orders,holiday_df,by.x =c("Year","order_week"), by.y =("holiday_year","holiday_week")  )
+orders <- merge(orders,holiday_df,by.x =c("Year","order_week"), by.y =("holiday_year","holiday_week")  )
+holiday_list<- as.Date(holiday_list)
+holiday_week <- week(holiday_list)
+holiday_year <- year(holiday_list)
+holiday_week <- ifelse(holiday_year==2016 & holiday_week<=26,holiday_week+53,holiday_week)
+holiday_df <- data.frame(holiday_week,holiday_year)
+holiday_df$holiday_freq<-1
+# Merging data from different files
+orders<- merge(rawdata,nps_Score, by.x=c("Year","Month"))
+orders <- merge(orders,productlist, by.x = c("Product_Vertical"), by.y = c("Product"))
+orders <- merge(orders,investments, by.x=c("Year","Month"))
+orders <- merge(orders,holiday_df,by.x =c("Year","order_week"), by.y =("holiday_year","holiday_week")  )
+orders <- merge(orders,holiday_df,by.x =c("Year","order_week"), by.y =("holiday_year","holiday_week"))
+orders <- merge(orders,holiday_df,by.x =c("order_week"), by.y =("holiday_week"))
+holiday_list<- as.Date(holiday_list)
+order_week <- week(holiday_list)
+holiday_year <- year(holiday_list)
+holiday_week <- ifelse(holiday_year==2016 & holiday_week<=26,holiday_week+53,holiday_week)
+holiday_list<- as.Date(holiday_list)
+order_week <- week(holiday_list)
+holiday_year <- year(holiday_list)
+order_week <- ifelse(holiday_year==2016 & order_week<=26,order_week+53,order_week)
+holiday_df <- data.frame(order_week)
+holiday_df$holiday_freq<-1
+# Merging data from different files
+orders<- merge(rawdata,nps_Score, by.x=c("Year","Month"))
+orders <- merge(orders,productlist, by.x = c("Product_Vertical"), by.y = c("Product"))
+orders <- merge(orders,investments, by.x=c("Year","Month"))
+orders <- merge(orders,holiday_df,by=c("order_week"))
+summary(orders)
+View(orders)
+holiday_list<- as.Date(holiday_list)
+order_week <- week(holiday_list)
+holiday_year <- year(holiday_list)
+order_week <- ifelse(holiday_year==2016 & order_week<=26,order_week+53,order_week)
+holiday_df$holiday_freq<-1
+holiday_df <- data.frame(holiday_list)
+holiday_df$holiday_freq<-1
+# Merging data from different files
+orders<- merge(rawdata,nps_Score, by.x=c("Year","Month"))
+orders <- merge(orders,productlist, by.x = c("Product_Vertical"), by.y = c("Product"))
+orders <- merge(orders,investments, by.x=c("Year","Month"))
+orders <- merge(orders,holiday_df,by.x=c("Date"),by.y=c("holiday_list"), all.x = T)
+summary(orders)
+orders$holiday_freq[which(is.na(orders$holiday_freq))]<-0
+summary(orders)
+CameraAccessory_df <- subset(orders, Product_Sub_Category=="CameraAccessory")
+HomeAudio_df <- subset(orders, Product_Sub_Category=="HomeAudio")
+GamingAccessory_df <- subset(orders, Product_Sub_Category=="GamingAccessory")
+# Merging data from different files
+orders<- merge(rawdata,nps_Score, by.x=c("Year","Month"))
+orders <- merge(orders,productlist, by.x = c("Product_Vertical"), by.y = c("Product"))
+#orders <- merge(orders,investments, by.x=c("Year","Month"))
+orders <- merge(orders,holiday_df,by.x=c("Date"),by.y=c("holiday_list"), all.x = T)
+orders$holiday_freq[which(is.na(orders$holiday_freq))]<-0
+cluster <- aggregate(cbind(Units,List_Price,Product_MRP)~Product_Vertical,CameraAccessory_df,mean)
+View(cluster)
+quantile(rawdata$Product_MRP,seq(0,1,.01))
+mean(cluster$Product_MRP)
+CameraAccessory_df <- subset(orders, Product_Sub_Category=="CameraAccessory")
+HomeAudio_df <- subset(orders, Product_Sub_Category=="HomeAudio")
+GamingAccessory_df <- subset(orders, Product_Sub_Category=="GamingAccessory")
+mrp_aggr <- aggregate(Product_MRP~Product_Vertical,CameraAccessory_df,mean)
+View(mrp_aggr)
+mrp_aggr <- aggregate(Product_MRP~Product_Vertical,CameraAccessory_df,sum)
+mean(mrp_aggr$Product_MRP)
+mrp_aggr <- aggregate(Product_MRP~Product_Vertical,CameraAccessory_df,mean)
+mean(mrp_aggr$Product_MRP)
